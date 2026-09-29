@@ -1,0 +1,229 @@
+---
+title: "Assignment 5A: Airline Delays"
+author: "Arauca Melendez"
+format: html
+editor: visual
+---
+
+# Introduction
+
+For this assignment, I worked with arrival-delay data from two airlines, ALASKA and AM WEST, across five cities: Los Angeles, Phoenix, San Diego, San Francisco, and Seattle. The original data was in a wide format, with each city in its own column.The goal of this assignment is to recreate the original dataset, fill in the missing airline values, and change the data into a tidy long format. I will then compare the arrival delay percentages for both airlines. First, I will look at the overall results for each airline and then compare their delay percentages for each city.
+
+# Approach
+
+I started by recreating the original table in a CSV file while keeping the blank airline cells from the source data. I then imported the CSV file into R and checked the structure and missing values. After identifying the missing airline names, I used fill() to carry the airline name down to the corresponding delayed row.I then used pivot_longer() to change the dataset from wide format to long format. After the data was tidied, I used dplyr functions to calculate flight counts and delay percentages. I compared the airlines first overall and then separately across the five cities. Finally, I looked at the number of flights each airline had in each city to explain why the overall results differed from the city-by-city results.
+
+# Process
+
+## Loading the Data
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+df_wide <- read.csv(
+  "airline_delays.csv",
+  check.names = FALSE,
+  stringsAsFactors = FALSE,
+  na.strings = ""
+)
+```
+
+## Double checking that R is reading my data correctly
+
+Due to past experiences with older assignment, I wanted to double check that R is not only reading my data correctly but also finding the information is accurate and true before any calculations are made.
+
+```{r}
+str(df_wide)
+```
+
+```{r}
+summary(df_wide)
+```
+
+```{r}
+head(df_wide)
+```
+
+## Finding the missing values
+
+```{r}
+colSums(is.na(df_wide))
+```
+
+## Filling in the missing values
+
+```{r}
+df_wide_filled <- df_wide %>%
+  fill(Airline, .direction = "down")
+
+df_wide_filled
+```
+
+The original table did not repeat the airline name on the delayed rows. These cells were represented as missing values in the recreated CSV file. I used the `fill()` function from `tidyr` to carry the airline name downward so that each row contains the appropriate airline.
+
+## Transforming the wide data into long
+
+## Tidying the Data
+
+The original dataset was in wide format because each destination was represented as a separate column. I used `pivot_longer()` to transform the five city columns into two variables: `City` and `Count`. I initially received an error when using `pivot_longer()` because the city columns did not all have the same data type. For example, the Los Angeles column was stored as an integer, while the Phoenix column was stored as character data. Since `pivot_longer()` was trying to combine these columns into one `Count` column, R could not combine the different data types. I fixed the error by converting all of the city columns to numeric values before running `pivot_longer()` again. This finally created a tidy structure where each observation has its own row and the variables are represented by columns. The resulting dataset contains the airline, flight status, city, and number of flights.
+
+```{r}
+df_wide_filled <- df_wide_filled %>%
+  mutate(
+    `Los Angeles` = as.numeric(`Los Angeles`),
+    `Phoenix` = as.numeric(`Phoenix`),
+    `San Diego` = as.numeric(`San Diego`),
+    `San Francisco` = as.numeric(`San Francisco`),
+    `Seattle` = as.numeric(`Seattle`)
+  )
+```
+
+```{r}
+df_long <- df_wide_filled %>%
+  pivot_longer(
+    cols = c("Los Angeles", "Phoenix", "San Diego", "San Francisco", "Seattle"),
+    names_to = "City",
+    values_to = "Count"
+  )
+```
+
+```{r}
+df_long
+```
+
+## Calculating the total number of flights for each airline
+
+```{r}
+count_analysis <- df_long %>%
+  group_by(Airline, Status) %>%
+  summarise(
+    Total = sum(Count),
+    .groups = "drop"
+  )
+
+count_analysis
+```
+
+```{r}
+count_analysis <- df_long %>%
+  group_by(Airline, Status) %>%
+  summarise(
+    Total = sum(Count, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+count_analysis
+```
+
+When I calculated the totals, some of the results returned as `NA` because there were missing values in the `Count` column. I fixed this by adding `na.rm = TRUE` to the `sum()` function, which tells R to ignore the missing values when calculating the totals.
+
+## Overall delay percentages
+
+```{r}
+overall_analysis <- df_long %>%
+  group_by(Airline) %>%
+  summarise(
+    Delayed = sum(Count[Status == "delayed"], na.rm = TRUE),
+    On_Time = sum(Count[Status == "on time"], na.rm = TRUE),
+    Total = Delayed + On_Time,
+    Delay_Percentage = Delayed / Total * 100
+  )
+
+overall_analysis
+```
+
+# Comparison Charts
+
+```{r}
+ggplot(overall_analysis,
+       aes(x = Airline, y = Delay_Percentage)) +
+  geom_col() +
+  labs(
+    title = "Overall Arrival Delay Percentage by Airline",
+    x = "Airline",
+    y = "Delay Percentage"
+  )
+```
+
+## Overall Comparison
+
+When all five destinations are combined, ALASKA had a delay rate of approximately 13.3%, while AM WEST had a delay rate of approximately 10.9%. Therefore, the overall percentages show a lower combined delay percentage for AM WEST. However, this overall comparison does not show how the airlines performed within each individual destination.
+
+## Comparing the cities
+
+```{r}
+city_analysis <- df_long %>%
+  group_by(Airline, City) %>%
+  summarise(
+    Delayed = sum(Count[Status == "delayed"], na.rm = TRUE),
+    On_Time = sum(Count[Status == "on time"], na.rm = TRUE),
+    Total = Delayed + On_Time,
+    Delay_Percentage = round(Delayed / Total * 100, 2),
+    .groups = "drop"
+  )
+
+city_analysis
+```
+
+I rounded the delay percentages by using the `round()` function around my percentage calculation. I used `round(..., 1` to round the results to two decimal places, which makes the percentages easier to read while still keeping enough detail for the analysis.
+
+```{r}
+city_analysis <- df_long %>%
+  group_by(Airline, City) %>%
+  summarise(
+    Delayed = sum(Count[Status == "delayed"], na.rm = TRUE),
+    On_Time = sum(Count[Status == "on time"], na.rm = TRUE),
+    Total = Delayed + On_Time,
+    Delay_Percentage = round(Delayed / Total * 100, 1),
+    .groups = "drop"
+  )
+
+city_analysis
+```
+
+## City Comparison charts
+
+```{r}
+ggplot(city_analysis,
+       aes(x = City, y = Delay_Percentage, fill = Airline)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Arrival Delay Percentage by City and Airline",
+    x = "City",
+    y = "Delay Percentage"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### City-by-City Comparison
+
+The city-level results show a different pattern from the overall comparison. ALASKA has a lower delay percentage than AM WEST in all five destinations.For Los Angeles, ALASKA had an 11.1% delay rate compared with 14.4% for AM WEST. In Phoenix, the rates were 5.2% for ALASKA and 7.9% for AM WEST. In San Diego, ALASKA had an 8.6% delay rate compared with 14.5% for AM WEST. In San Francisco, the rates were 16.9% for ALASKA and 28.7% for AM WEST. In Seattle, ALASKA had a 14.2% delay rate compared with 23.3% for AM WEST.
+
+## The Difference Between the Overall and City-Level Results
+
+The overall comparison produces a different result from the city-by-city comparison because the two airlines have very different numbers of flights across the five destinations. For example, AM WEST has a very large number of flights to Phoenix, where its delay percentage is relatively low. This large number of Phoenix flights has a strong effect on AM WEST's overall delay percentage.
+
+ALASKA, on the other hand, has a very large number of flights to Seattle. Seattle has a higher delay percentage for ALASKA than some of its other destinations. As a result, the large number of Seattle flights contributes substantially to ALASKA's overall percentage.
+
+This means that the overall percentage is affected not only by the delay rate in each city, but also by how many flights each airline has in each city. The overall results therefore do not necessarily reflect the pattern seen when the airlines are compared within the same destinations.
+
+## Flight volumes
+
+```{r}
+flight_volume <- df_long %>%
+  group_by(Airline, City) %>%
+  summarise(
+    Total_Flights = sum(Count, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+flight_volume
+```
+
+This is an example of what is commonly described as Simpson's paradox: the relationship observed when data is aggregated can differ from the relationship observed within individual groups. In this dataset, the difference is related to the unequal distribution of flights across destinations.
+
+# Conclusion
+
+I started with the original wide-format airline arrival-delay data and recreated it as a CSV file. I used `fill()` to fill in the missing airline names and then used `pivot_longer()` to change the data into a tidy long format. Overall, ALASKA had a delay percentage of about 13.3%, while AM WEST had about 10.9%. However, when I looked at each city separately, ALASKA had a lower delay percentage than AM WEST in all five cities. The difference happens because the airlines have different numbers of flights going to each city. This shows that looking only at the overall percentage can hide differences that are easier to see when the data is broken down by city.
